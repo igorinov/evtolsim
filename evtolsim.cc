@@ -53,11 +53,15 @@ void log(const char *tag, const char *format, ...)
 class ChargingStation
 {
 private:
+
     int available_chargers;
     int next_ticket;
     int now_serving;
     std::mutex mx;
-    std::condition_variable cv;
+    std::condition_variable cv_ticket_dispenser;
+    std::condition_variable cv_now_serving;
+    std::condition_variable cv_charger_vacated;
+    std::condition_variable cv_charging_started;
 
 protected:
 
@@ -80,9 +84,12 @@ public:
         next_ticket = 0;
     }
 
-    void signal()
+    void signal_all_conditions()
     {
-        cv.notify_all();
+        cv_ticket_dispenser.notify_all();
+        cv_now_serving.notify_all();
+        cv_charging_started.notify_all();
+        cv_charger_vacated.notify_all();
     }
 
     void run()
@@ -93,7 +100,7 @@ public:
             std::unique_lock<std::mutex> lk(mx);
 
             while (available_chargers == 0) {
-                cv.wait(lk);
+                cv_charger_vacated.wait(lk);
                 if (game_over) {
                     break;
                 }
@@ -105,7 +112,7 @@ public:
                 } else {
                     log(tag, "%d chargers available!", available_chargers);
                 }
-                cv.wait(lk);
+                cv_ticket_dispenser.wait(lk);
                 if (game_over) {
                     break;
                 }
@@ -116,16 +123,27 @@ public:
                 available_chargers -= 1;
                 log(tag, "now serving ticket #%d; vehicles in line: %d",
                         now_serving, queue_length());
-                cv.notify_all();
+                cv_now_serving.notify_all();
+                cv_charging_started.wait(lk);
             }
         }
     }
 
+    // This method must be called by the vehicle when it starts charging
+    // in order to update the "now serving" number
+    void start_charging(void)
+    {
+        std::unique_lock<std::mutex> lk(mx);
+        cv_charging_started.notify_all();
+    }
+
+    // This method must be called by the vehicle when it ends charging
+    // to give the charger to the next vehicle in line
     void end_charging(void)
     {
         std::unique_lock<std::mutex> lk(mx);
         available_chargers += 1;
-        cv.notify_all();
+        cv_charger_vacated.notify_all();
     }
 
     void wait_for_available_charger(const char *callsign)
@@ -137,9 +155,9 @@ public:
         if (callsign != nullptr) {
             log(callsign, "pulled ticket #%d", my_number);
         }
-        cv.notify_all();
+        cv_ticket_dispenser.notify_all();
         while (now_serving != my_number) {
-            cv.wait(lk);
+            cv_now_serving.wait(lk);
             if (game_over) {
                 return;
             }
@@ -153,6 +171,7 @@ ChargingStation charging_station(3);
 class Vehicle
 {
 public:
+
     double cruise_speed;
     double battery_capacity;
     double time_to_charge;
@@ -226,6 +245,7 @@ public:
 
             log(callsign, "charging...");
             number_of_charges += 1;
+            charging_station.start_charging();
 
             // time_to_charge in simulated hours to wall clock milliseconds
             p = milliseconds((int) (time_to_charge * 3600000 / time_scale));
@@ -386,7 +406,7 @@ int main(int argc, char **argv)
 
     game_over = true;
     cv_abort_flights.notify_all();
-    charging_station.signal();
+    charging_station.signal_all_conditions();
 
     // Join all vehicle threads
     for (auto& t : vehicle_threads) {
