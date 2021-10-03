@@ -16,8 +16,10 @@ using namespace std::chrono;
 // 1 minute of simulated time is equivalent to 1 second on the wall clock
 double time_scale = 60.0;
 
+// The simulation is shutting down
 bool game_over = false;
-bool stop_charging_station = false;
+
+// Condition variable to abort simulated flights
 std::condition_variable cv_abort_flights;
 
 auto start_time = std::chrono::high_resolution_clock::now();
@@ -87,12 +89,12 @@ public:
     {
         const char *tag = "Charging Station";
 
-        while(!stop_charging_station) {
+        while(!game_over) {
             std::unique_lock<std::mutex> lk(mx);
 
             while (available_chargers == 0) {
                 cv.wait(lk);
-                if (stop_charging_station) {
+                if (game_over) {
                     break;
                 }
             }
@@ -104,7 +106,7 @@ public:
                     log(tag, "%d chargers available!", available_chargers);
                 }
                 cv.wait(lk);
-                if (stop_charging_station) {
+                if (game_over) {
                     break;
                 }
             }
@@ -343,9 +345,13 @@ int main(int argc, char **argv)
     srand(duration_cast<milliseconds>(start_time.time_since_epoch()).count());
 
     for (i = 0; i < 20; i += 1) {
+        // Randomly select vehicle type
         k = rand() % n_types;
+
+        // Create a unique call sign
         callsign[0] = letters[k];
         sprintf(callsign + 1, "%d", ++type_counters[k]);
+
         switch (k) {
         case 0:
             vehicles.emplace_back(VehicleAlpha(strdup(callsign)));
@@ -362,9 +368,12 @@ int main(int argc, char **argv)
         case 4:
             vehicles.emplace_back(VehicleEcho(strdup(callsign)));
             break;
+        default:
+            printf("Error: unknown vehicle type (%d) for %s\n", k, callsign);
         }
     }
 
+    // Create a simulation thread for each vehicle
     for (auto& v : vehicles) {
         vehicle_threads.push_back(std::thread([&] { v.run(); } ));
     }
@@ -376,14 +385,15 @@ int main(int argc, char **argv)
     log("main", "game over, shutting down vehicles...");
 
     game_over = true;
-    stop_charging_station = true;
     cv_abort_flights.notify_all();
     charging_station.signal();
 
+    // Join all vehicle threads
     for (auto& t : vehicle_threads) {
         t.join();
     }
 
+    // Join the charging station thread
     charging_thread.join();
 
     printf("\nCallsign AvgFlight AvgCharge   AvgWait    PMi  Exp. fail\n");
@@ -391,7 +401,7 @@ int main(int argc, char **argv)
         int avg_flight_min = 0;
         int avg_charge_min = 0;
         int avg_wait_min = 0;
-        int pax_miles = v.total_flight_time * v.cruise_speed * v.passenger_count;
+        int pmi = v.total_flight_time * v.cruise_speed * v.passenger_count;
 
         if (v.number_of_flights > 0) {
             avg_flight_min = v.total_flight_time * 60.0 / v.number_of_flights;
@@ -410,13 +420,15 @@ int main(int argc, char **argv)
                 avg_flight_min / 60, avg_flight_min % 60,
                 avg_charge_min / 60, avg_charge_min % 60,
                 avg_wait_min / 60, avg_wait_min % 60,
-                pax_miles,
+                pmi,
                 v.total_flight_time * v.p_faults_per_hour);
 
-       double t = v.total_flight_time + v.total_charge_time + v.total_wait_time;
-       if (fabs(t - sim_hours) > 0.01) {
-           printf("Error: total time counters for %s is %lf hours\n", v.callsign, t);
-       }
+        double t = v.total_flight_time + v.total_charge_time + v.total_wait_time;
+        if (fabs(t - sim_hours) > 0.01) {
+            printf("Error: sum of time counters for %s (%lf hours)"
+                    " does not match the simulation time\n",
+                    v.callsign, t);
+        }
     }
 
     return 0;
