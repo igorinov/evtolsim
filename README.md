@@ -1,5 +1,15 @@
 # eVTOL Simulation Solution
 
+In this simulation, 20 Urban air mobility vehicle models operate for 3 hours.
+The type of each vehicle is randomly chosen from the following:
+
+Company | Cruise speed, mph | Battery capacity, KWh | Charging time, h | Energy use, KWh/mile | Passenger count | Faults / hour
+--------|-----|-----|------|-----|---|----
+Alpha   | 120 | 320 | 0.6  | 1.6 | 4 | 0.25
+Beta    | 100 | 100 | 0.2  | 1.5 | 5 | 0.10
+Charlie | 160 | 220 | 0.8  | 2.2 | 3 | 0.05
+Delta   |  90 | 120 | 0.62 | 0.8 | 2 | 0.22
+Echo    |  30 | 150 | 0.3  | 5.8 | 2 | 0.61
 
 ## Building
 
@@ -26,8 +36,9 @@ Custom time scale, e.g. 600x:
 Column | Description
 --|--
 Callsign | Call sign of the vehicle, starts with the first letter of the company name
-AvgFlight | Average flight time in hours
-AvgCharge | Average charging time in hours
+AvgFlight | Average flight time
+AvgCharge | Average charging time
+AvgWait | Average time waiting in line for charging
 PMi | Passenger miles, sum of the products obtained by multiplying the number of passengers carried on each flight by the flight distance
 Exp. fail | Expected number of failures, total flight time multiplied by failure rate
 
