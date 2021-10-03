@@ -3,7 +3,9 @@
 
 ## Building
 
-  make
+```
+make
+```
 
 ## Running
 
@@ -27,7 +29,7 @@ Callsign | Call sign of the vehicle, starts with the first letter of the company
 AvgFlight | Average flight time in hours
 AvgCharge | Average charging time in hours
 PMi | Passenger miles, sum of the products obtained by multiplying the number of passengers carried on each flight by the flight distance
-Est. fail | Expected number of failures, total flight time multiplied by failure rate
+Exp. fail | Expected number of failures, total flight time multiplied by failure rate
 
 Example of results table:
 
