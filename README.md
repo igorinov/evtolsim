@@ -1,7 +1,6 @@
 # eVTOL Simulation Solution
 
 
-
 ## Building
 
   make
@@ -22,6 +21,8 @@ Custom time scale, e.g. 600x:
 
 ## Results
 
+Column | Description
+--|--
 Callsign | Call sign of the vehicle, starts with the first letter of the company name
 AvgFlight | Average flight time in hours
 AvgCharge | Average charging time in hours
