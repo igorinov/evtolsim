@@ -22,13 +22,13 @@ make
 Default time scale (60x), one simulated minute is equivalent to one second on the wall clock:
 
 ```
-./evtol
+./evtolsim
 ```
 
 Custom time scale, e.g. 600x:
 
 ```
- ./evtol 600
+ ./evtolsim 600
 ```
 
 ## Results
