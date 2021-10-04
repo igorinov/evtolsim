@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+#include "charging_station.h"
+
 using namespace std::this_thread;
 using namespace std::chrono;
 
@@ -49,122 +51,6 @@ void log(const char *tag, const char *format, ...)
 
     printf("\n");
 }
-
-class ChargingStation
-{
-private:
-
-    int available_chargers;
-    int next_ticket;
-    int now_serving;
-    std::mutex mx;
-    std::condition_variable cv_ticket_dispenser;
-    std::condition_variable cv_now_serving;
-    std::condition_variable cv_charger_vacated;
-    std::condition_variable cv_charging_started;
-
-protected:
-
-    bool queue_is_empty(void)
-    {
-        return now_serving == next_ticket;
-    }
-
-    int queue_length()
-    {
-        return next_ticket - now_serving;
-    }
-
-public:
-
-    ChargingStation(int n)
-    {
-        available_chargers = n;
-        now_serving = 0;
-        next_ticket = 0;
-    }
-
-    void signal_all_conditions()
-    {
-        cv_ticket_dispenser.notify_all();
-        cv_now_serving.notify_all();
-        cv_charging_started.notify_all();
-        cv_charger_vacated.notify_all();
-    }
-
-    void run()
-    {
-        const char *tag = "Charging Station";
-
-        while(!game_over) {
-            std::unique_lock<std::mutex> lk(mx);
-
-            while (available_chargers == 0) {
-                cv_charger_vacated.wait(lk);
-                if (game_over) {
-                    break;
-                }
-            }
-
-            while (queue_is_empty()) {
-                if (available_chargers == 1) {
-                    log(tag, "one charger available!");
-                } else {
-                    log(tag, "%d chargers available!", available_chargers);
-                }
-                cv_ticket_dispenser.wait(lk);
-                if (game_over) {
-                    break;
-                }
-            }
-
-            if (!queue_is_empty() && available_chargers > 0) {
-                now_serving += 1;
-                available_chargers -= 1;
-                log(tag, "now serving ticket #%d; vehicles in line: %d",
-                        now_serving, queue_length());
-                cv_now_serving.notify_all();
-                cv_charging_started.wait(lk);
-            }
-        }
-    }
-
-    // This method must be called by the vehicle when it starts charging
-    // in order to update the "now serving" number
-    void start_charging(void)
-    {
-        std::unique_lock<std::mutex> lk(mx);
-        cv_charging_started.notify_all();
-    }
-
-    // This method must be called by the vehicle when it ends charging
-    // to give the charger to the next vehicle in line
-    void end_charging(void)
-    {
-        std::unique_lock<std::mutex> lk(mx);
-        available_chargers += 1;
-        cv_charger_vacated.notify_all();
-    }
-
-    void wait_for_available_charger(const char *callsign)
-    {
-        std::unique_lock<std::mutex> lk(mx);
-
-        // Please take a number
-        int my_number = ++next_ticket;
-        if (callsign != nullptr) {
-            log(callsign, "pulled ticket #%d", my_number);
-        }
-        cv_ticket_dispenser.notify_all();
-        while (now_serving != my_number) {
-            cv_now_serving.wait(lk);
-            if (game_over) {
-                return;
-            }
-        }
-    }
-
-};
 
 ChargingStation charging_station(3);
 
@@ -406,7 +292,7 @@ int main(int argc, char **argv)
 
     game_over = true;
     cv_abort_flights.notify_all();
-    charging_station.signal_all_conditions();
+    charging_station.shutdown();
 
     // Join all vehicle threads
     for (auto& t : vehicle_threads) {
@@ -453,3 +339,4 @@ int main(int argc, char **argv)
 
     return 0;
 }
+
